@@ -1,0 +1,13 @@
+corpus:
+  subfields:
+    - 2302 # Ecological Modeling
+    - 2303 # Ecology
+    - 2309 # Nature and Landscape Conservation
+    - 1105 # Ecology, Evolution, Behavior and Systematics
+    - 2611 # Modeling and Simulation
+    - 2613 # Statistics and Probability
+  min_year: 2010
+  has_abstract: true
+  batch_size: 100
+  contact_email: psyme95@gmail.com
+  db_path: D:/Projects/Lit_tool/data
