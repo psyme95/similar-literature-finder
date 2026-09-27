@@ -11,3 +11,15 @@ corpus:
   batch_size: 100
   contact_email: psyme95@gmail.com
   db_path: D:/Projects/Lit_tool/data
+  cols_to_select: 
+    - 'id'
+    - 'doi'
+    - 'title'
+    - 'authorships'
+    - 'cited_by_count'
+    - 'publication_year'
+    - 'publication_date'
+    - 'topics'
+    - 'keywords'
+    - 'referenced_works'
+    - 'abstract_inverted_index'
