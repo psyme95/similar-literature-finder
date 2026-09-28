@@ -21,3 +21,4 @@ corpus:
     - 'primary_topic'
     - 'referenced_works'
     - 'abstract_inverted_index'
+    - 'language'
