@@ -8,9 +8,8 @@ corpus:
     - 2613 # Statistics and Probability
   min_year: 2010
   has_abstract: true
-  batch_size: 100
-  contact_email: psyme95@gmail.com
-  db_path: D:/Projects/Lit_tool/data
+  per_page: 200
+  db_path: D:/Projects/Lit_tool/data/openalex.duckdb
   cols_to_select: 
     - 'id'
     - 'doi'
@@ -19,7 +18,6 @@ corpus:
     - 'cited_by_count'
     - 'publication_year'
     - 'publication_date'
-    - 'topics'
-    - 'keywords'
+    - 'primary_topic'
     - 'referenced_works'
     - 'abstract_inverted_index'
