@@ -199,4 +199,25 @@ def create_tables(con):
 if __name__ == "__main__":
     with duckdb.connect(corpus["db_path"]) as con:
         create_tables(con)
-        ingest_year(con, 2010)
+        years = con.sql("SELECT DISTINCT publication_year FROM works").fetchall()
+        done_years = {row[0] for row in years}
+
+        for year in range(corpus['min_year'], 2027):
+            if year in done_years:
+                print(year, "already present in database, skipping")
+                continue
+
+            # One cheap request (1 credit): how many pages this year needs, and how many credits are left today
+            check_params = year_params(year)
+            check_params["per-page"] = 1
+            response = requests.get(works_url, params=check_params, timeout=30)
+            response.raise_for_status()
+            pages_needed = math.ceil(response.json()["meta"]["count"] / corpus["per_page"])
+            credits_left = int(response.headers["X-RateLimit-Remaining"])
+
+            if credits_left < pages_needed + 10:  # small margin in case the count grows during the year
+                print(f"Stopping before {year}: it needs {pages_needed} credits and {credits_left} are left today.")
+                print("Run the script again after the daily budget resets.")
+                break
+
+            ingest_year(con, year)
