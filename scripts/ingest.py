@@ -8,6 +8,8 @@ import pandas as pd
 import requests
 import yaml
 from dotenv import load_dotenv
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 
 # Settings
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -33,6 +35,13 @@ params = {
     "api_key": config["api_key"],
 }
 
+# Retry timeouts, dropped connections, rate limits and server errors, waiting longer each time.
+# Once retries run out the error is raised as before, so ingest_year still rolls back.
+retry = Retry(total=5, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
+session = requests.Session()
+session.mount("https://", HTTPAdapter(max_retries=retry))
+
+
 # Functions
 def paginate(url, params=None, per_page=200):
     """Yield successive pages from a cursor-paginated OpenAlex endpoint."""
@@ -42,7 +51,7 @@ def paginate(url, params=None, per_page=200):
 
     while cursor:
         params["cursor"] = cursor
-        response = requests.get(url, params=params, timeout=30)
+        response = session.get(url, params=params, timeout=30)
         response.raise_for_status()
         page = response.json()
 
@@ -124,7 +133,6 @@ def year_params(year):
 
 def insert_rows(con, table, rows):
     if not rows:
-        print(f"No rows for {table} on this page, skipping.")
         return
 
     rows_df = pd.DataFrame(rows)
@@ -133,6 +141,7 @@ def insert_rows(con, table, rows):
 
 def ingest_year(con, year):
     con.begin()
+    n_skipped = 0
     try:
         pages = paginate(works_url, year_params(year), per_page=corpus['per_page'])
         for page_number, page in enumerate(pages, start=1):
@@ -145,9 +154,20 @@ def ingest_year(con, year):
             authors_list = []
             references_list = []
 
+            # OpenAlex sometimes moves a work to another year after we stored it (or repeats it across pages).
+            # Keep the copy we already hold and skip the new one in all three tables.
+            page_ids = pd.DataFrame({"work_id": [remove_prefix(work['id']) for work in page['results']]})
+            seen_ids = {row[0] for row in con.execute(
+                "SELECT work_id FROM works WHERE work_id IN (SELECT work_id FROM page_ids)").fetchall()}
+
             for work in page['results']:
                 work_row, work_authors, work_references = flatten_work(work)
-                
+
+                if work_row['work_id'] in seen_ids:
+                    n_skipped += 1
+                    continue
+                seen_ids.add(work_row['work_id'])  # also catches a repeat within the same page
+
                 works_list.append(work_row)
                 authors_list.extend(work_authors)
                 references_list.extend(work_references)
@@ -156,9 +176,9 @@ def ingest_year(con, year):
             insert_rows(con, "work_authors", authors_list)
             insert_rows(con, "work_references", references_list)
 
-            if page_number % 50 == 0: print(page_number, "pages parsed.")
+            if page_number % 50 == 0: print("   ", page_number, "pages parsed.")
         con.commit()
-        print("Finished page parsing.")
+        print(f"Finished page parsing. Skipped {n_skipped} works already in the database.")
 
     except BaseException:
         con.rollback()
@@ -204,13 +224,13 @@ if __name__ == "__main__":
 
         for year in range(corpus['min_year'], 2027):
             if year in done_years:
-                print(year, "already present in database, skipping")
+                print(year, "already present in database, skipping.")
                 continue
 
             # One cheap request (1 credit): how many pages this year needs, and how many credits are left today
             check_params = year_params(year)
             check_params["per-page"] = 1
-            response = requests.get(works_url, params=check_params, timeout=30)
+            response = session.get(works_url, params=check_params, timeout=30)
             response.raise_for_status()
             pages_needed = math.ceil(response.json()["meta"]["count"] / corpus["per_page"])
             credits_left = int(response.headers["X-RateLimit-Remaining"])
